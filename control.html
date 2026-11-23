@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>团子桌宠 · 控制面板</title>
+  </head>
+  <body>
+    <main class="workspace">
+      <header class="page-head">
+        <h1>团子桌宠</h1>
+        <button type="button" id="show-pet" class="primary" disabled>显示桌宠</button>
+      </header>
+      <div class="columns">
+        <section class="preview card" aria-labelledby="active-role">
+          <h2 id="active-role">角色预览</h2>
+          <canvas id="preview" aria-label="桌宠动画预览"></canvas>
+          <div class="preview-tools">
+            <button type="button" id="try-typing" disabled>试打字</button>
+            <button type="button" id="try-clicking" disabled>试点击</button>
+          </div>
+        </section>
+        <div class="settings">
+          <fieldset class="card" id="pet-settings" disabled>
+            <legend>外观</legend>
+            <label class="stack" for="role">桌宠角色
+              <select id="role"></select>
+            </label>
+            <label class="stack" for="scale">
+              <span class="split">桌宠大小 <output id="scale-value" for="scale">100%</output></span>
+              <input type="range" id="scale" min="20" max="150" value="100">
+            </label>
+            <div class="field-row">
+              <label class="stack" for="layout">键盘配列
+                <select id="layout"><option value="65">65% 紧凑</option><option value="108">108 全尺寸</option></select>
+              </label>
+              <label class="stack" for="orientation">键盘朝向
+                <select id="orientation"><option value="cat">面向猫咪</option><option value="viewer">面向观众</option></select>
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="card" id="interaction-settings" disabled>
+            <legend>桌面与互动</legend>
+            <div class="switches">
+              <label><input type="checkbox" id="top">始终置顶</label>
+              <label><input type="checkbox" id="sound">摸头呼噜</label>
+              <label><input type="checkbox" id="bubbles">按键气泡</label>
+              <label><input type="checkbox" id="privacy">密码输入保护</label>
+            </div>
+            <button type="button" id="reset">移回桌面右下角</button>
+          </fieldset>
+          <form class="card design" id="skin-form">
+            <h2>调一只自己的猫</h2>
+            <fieldset id="skin-fields" disabled>
+              <label class="stack" for="skin-name">角色名字
+                <input type="text" id="skin-name" maxlength="32" required>
+              </label>
+              <div class="swatches">
+                <label for="fur">毛色<input type="color" id="fur" value="#55515e"></label>
+                <label for="eyes">瞳色<input type="color" id="eyes" value="#e5ba58"></label>
+                <label for="accent">按键色<input type="color" id="accent" value="#849bde"></label>
+              </div>
+              <button type="submit" class="primary" id="save-skin">保存并启用</button>
+            </fieldset>
+          </form>
+        </div>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="/src/controlPanel.ts"></script>
+  </body>
+</html>

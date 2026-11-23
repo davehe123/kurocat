@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn default_cat_breed() -> String {
-    "black".to_string()
+    "smoky-gray-tabby".to_string()
 }
 
 fn default_mcp_enabled() -> bool {
@@ -15,7 +15,7 @@ fn default_privacy_password_guard() -> bool {
 }
 
 fn default_mcp_port() -> u16 {
-    27420
+    27421
 }
 
 pub fn default_keyboard_layout() -> String {
@@ -71,6 +71,58 @@ pub struct AppSettings {
     pub privacy_password_guard: bool,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettingsPatch {
+    pub scale: Option<f64>,
+    pub always_on_top: Option<bool>,
+    pub click_through_locked: Option<bool>,
+    pub show_key_bubbles: Option<bool>,
+    pub sound_enabled: Option<bool>,
+    pub autostart: Option<bool>,
+    pub cat_breed: Option<String>,
+    pub mcp_enabled: Option<bool>,
+    pub mcp_port: Option<u16>,
+    pub keyboard_layout: Option<String>,
+    pub keyboard_orientation: Option<String>,
+    pub privacy_password_guard: Option<bool>,
+}
+
+impl SettingsPatch {
+    pub fn apply(self, settings: &mut AppSettings) {
+        macro_rules! write_if_present {
+            ($($field:ident),+ $(,)?) => {
+                $(if let Some(value) = self.$field {
+                    settings.$field = value;
+                })+
+            };
+        }
+        write_if_present!(scale, always_on_top, click_through_locked, show_key_bubbles, sound_enabled, autostart, cat_breed, mcp_enabled, mcp_port, keyboard_layout, keyboard_orientation, privacy_password_guard);
+    }
+}
+
+#[cfg(test)]
+mod settings_patch_tests {
+    use super::*;
+
+    #[test]
+    fn a_partial_patch_preserves_unrelated_settings_and_position() {
+        let mut settings = AppSettings {
+            x: Some(-800),
+            y: Some(200),
+            cat_breed: "ragdoll".into(),
+            show_key_bubbles: false,
+            ..AppSettings::default()
+        };
+        let patch: SettingsPatch = serde_json::from_str(r#"{"scale":0.85}"#).unwrap();
+        patch.apply(&mut settings);
+        assert_eq!(settings.scale, 0.85);
+        assert_eq!((settings.x, settings.y), (Some(-800), Some(200)));
+        assert_eq!(settings.cat_breed, "ragdoll");
+        assert!(!settings.show_key_bubbles);
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -98,7 +150,7 @@ pub fn app_data_dir() -> PathBuf {
         let base = std::env::var("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
-        base.join("kuro-cat-pet")
+        base.join("tuanzi-cat")
     }
     #[cfg(target_os = "macos")]
     {
@@ -107,14 +159,14 @@ pub fn app_data_dir() -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."));
         home.join("Library")
             .join("Application Support")
-            .join("kuro-cat-pet")
+            .join("tuanzi-cat")
     }
     #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         let home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
-        home.join(".config").join("kuro-cat-pet")
+        home.join(".config").join("tuanzi-cat")
     }
 }
 
@@ -160,8 +212,7 @@ pub fn set_windows_autostart(enabled: bool) -> Result<(), String> {
     }
 
     let subkey = to_wide("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-    let value_name = to_wide("KuroCat");
-    let legacy_value_name = to_wide("KuroCatPet");
+    let value_name = to_wide("TuanziCat");
 
     unsafe {
         let mut hkey: HKEY = std::ptr::null_mut();
@@ -176,15 +227,12 @@ pub fn set_windows_autostart(enabled: bool) -> Result<(), String> {
             return Err(format!("RegOpenKeyExW failed with code {}", status));
         }
 
-        // Clean up legacy autostart key so users upgrading from <=v4.2 never run two copies
-        let _ = RegDeleteValueW(hkey, legacy_value_name.as_ptr());
-
         let result = if enabled {
             let exe = std::env::current_exe()
                 .map_err(|e| e.to_string())?
                 .to_string_lossy()
                 .to_string();
-            let quoted = format!("\"{}\"", exe);
+            let quoted = format!("\"{}\" --background", exe);
             let data = to_wide(&quoted);
             let byte_len = (data.len() * std::mem::size_of::<u16>()) as u32;
             let st = RegSetValueExW(
@@ -214,7 +262,7 @@ pub fn set_windows_autostart(enabled: bool) -> Result<(), String> {
 pub fn set_windows_autostart(enabled: bool) -> Result<(), String> {
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     let agents_dir = PathBuf::from(home).join("Library").join("LaunchAgents");
-    let plist_path = agents_dir.join("com.kurocat.pet.plist");
+    let plist_path = agents_dir.join("com.tuanzi.cat.plist");
 
     if enabled {
         fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
@@ -228,10 +276,11 @@ pub fn set_windows_autostart(enabled: bool) -> Result<(), String> {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.kurocat.pet</string>
+    <string>com.tuanzi.cat</string>
     <key>ProgramArguments</key>
     <array>
         <string>{}</string>
+        <string>--background</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -270,13 +319,13 @@ pub fn create_desktop_shortcut() -> Result<String, String> {
 
     let script = format!(
         "$desktop = [Environment]::GetFolderPath('Desktop'); \
-         $lnk = Join-Path $desktop 'KuroCat.lnk'; \
+         $lnk = Join-Path $desktop 'TuanziCat.lnk'; \
          $ws = New-Object -ComObject WScript.Shell; \
          $s = $ws.CreateShortcut($lnk); \
          $s.TargetPath = '{exe}'; \
          $s.WorkingDirectory = '{wd}'; \
          $s.IconLocation = '{exe},0'; \
-         $s.Description = 'KuroCat Desktop Companion'; \
+         $s.Description = 'Tuanzi Cat Desktop Companion'; \
          $s.Save(); \
          Write-Output $lnk",
         exe = exe_str,

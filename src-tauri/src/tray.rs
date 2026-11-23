@@ -12,14 +12,15 @@ fn default_tray_tooltip() -> &'static str {
     #[cfg(windows)]
     {
         if crate::win_is_elevated() {
-            return "KuroCat（管理员 · 游戏模式就绪）";
+            return "团子桌宠（管理员 · 游戏模式就绪）";
         }
     }
-    "KuroCat"
+    "团子桌宠"
 }
 
 pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
-    let toggle_show = MenuItem::with_id(app, "toggle_show", "显示 / 隐藏小黑猫", true, None::<&str>)?;
+    let control = MenuItem::with_id(app, "open_controls", "打开团子控制面板", true, None::<&str>)?;
+    let toggle_show = MenuItem::with_id(app, "toggle_show", "显示 / 隐藏桌宠", true, None::<&str>)?;
     let pause_guard = CheckMenuItem::with_id(
         app,
         "pause_guard",
@@ -197,7 +198,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "quit", "退出 KuroCat", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出团子桌宠", true, None::<&str>)?;
 
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
@@ -206,6 +207,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
+            &control,
             &toggle_show,
             &pause_guard,
             &restart_as_admin,
@@ -232,6 +234,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
+            &control,
             &toggle_show,
             &pause_guard,
             &sep1,
@@ -257,6 +260,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
+            &control,
             &toggle_show,
             &pause_guard,
             &sep1,
@@ -325,6 +329,9 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
         .on_menu_event(move |app, event| {
             let state = app.state::<AppState>();
             match event.id().as_ref() {
+                "open_controls" => {
+                    let _ = crate::control::show_control(app);
+                }
                 "toggle_show" => {
                     let on_top = state.settings.lock().unwrap().always_on_top;
                     if state.paused_guard.load(std::sync::atomic::Ordering::SeqCst) {

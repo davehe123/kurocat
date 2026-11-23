@@ -153,8 +153,55 @@ pub fn sanitize_cat_id(raw: &str) -> String {
     }
 }
 
+pub fn smoky_gray_tabby() -> CatSkinConfig {
+    CatSkinConfig {
+        id: "smoky-gray-tabby".into(),
+        name: "烟灰虎斑".into(),
+        emoji: None,
+        builtin: true,
+        fur_color: "#55515e".into(),
+        fur_secondary_color: Some("#71717e".into()),
+        outline_color: Some("#282832".into()),
+        leg_line_color: None,
+        pattern: Some("tabby".into()),
+        mask_color: None,
+        forehead_bridge_color: None,
+        flank_color: None,
+        belly_bib_color: Some("#b7b1bc".into()),
+        stripe_color: Some("#343442".into()),
+        calico_patch_color: None,
+        ear_outer_color: None,
+        ear_tip_color: None,
+        ear_inner_color: Some("#d6a4ab".into()),
+        ear_tuft_color: None,
+        tail_color: None,
+        tail_tip_color: Some("#383744".into()),
+        tail_fluffy: Some(false),
+        tail_stripes: Some(true),
+        eye_color_top: "#e5ba58".into(),
+        eye_color_bottom: Some("#f3d17d".into()),
+        pupil_color: Some("#262430".into()),
+        eye_catchlight: Some(true),
+        eye_rim_color: None,
+        squint_color: None,
+        squint_glow_color: None,
+        nose_color: Some("#c78398".into()),
+        mouth_color: None,
+        blush_color: Some("#a4788c".into()),
+        whisker_color: Some("#e9e2ed".into()),
+        arm_color: Some("#55515e".into()),
+        paw_color: Some("#797887".into()),
+        paw_outline_color: None,
+        arm_crease_color: None,
+        accent_color: Some("#849bde".into()),
+        accent_side_color: Some("#4d5b93".into()),
+        spots: vec![],
+    }
+}
+
 pub fn builtin_cats() -> Vec<CatSkinConfig> {
     vec![
+        smoky_gray_tabby(),
         CatSkinConfig {
             id: "black".to_string(),
             name: "小黑猫".to_string(),

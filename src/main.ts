@@ -7,22 +7,7 @@ import { catAudio } from './audio';
 import { DEFAULT_BUILTIN_CATS, type CatSkinConfig } from './catSkins';
 import type { KeyboardLayoutId } from './keyboardLayout';
 
-interface AppSettings {
-  x: number | null;
-  y: number | null;
-  scale: number;
-  alwaysOnTop: boolean;
-  clickThroughLocked: boolean;
-  showKeyBubbles: boolean;
-  soundEnabled: boolean;
-  autostart: boolean;
-  catBreed: string;
-  mcpEnabled: boolean;
-  mcpPort: number;
-  keyboardLayout: KeyboardLayoutId;
-  keyboardOrientation: KeyboardOrientation;
-  privacyPasswordGuard: boolean;
-}
+import { saveDesktopSettings, type AppSettings, type SettingsPatch } from './desktopSettings';
 
 type InputEvent =
   | { kind: 'keyDown'; vk: number; scan: number; repeat: boolean }
@@ -160,7 +145,7 @@ function syncMenuUI(): void {
   const headerEl = document.getElementById('menu-header');
   if (headerEl && activeCat) {
     const emoji = activeCat.emoji || '🐱';
-    headerEl.textContent = `${emoji} KuroCat ${activeCat.name}`;
+    headerEl.textContent = `${emoji} 团子 · ${activeCat.name}`;
     headerEl.style.color = activeCat.accentColor || '#c8f538';
   }
 
@@ -192,11 +177,14 @@ function openContextMenu(clientX: number, clientY: number): void {
   menuEl.style.top = `${Math.max(8, Math.min(clientY, maxY))}px`;
 }
 
-async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
-  settings = { ...settings, ...patch };
-  syncMenuUI();
-  settings = await invoke<AppSettings>('update_settings', { patch: settings });
-  syncMenuUI();
+async function applySettingsPatch(patch: SettingsPatch): Promise<void> {
+  try {
+    settings = await saveDesktopSettings(patch);
+    syncMenuUI();
+  } catch (error) {
+    console.error('Unable to save desktop settings:', error);
+    showUpdateToast('设置未能保存', { autoHideMs: 3200 });
+  }
 }
 
 async function copyMcpConfig(): Promise<void> {
@@ -420,7 +408,7 @@ async function bootstrap(): Promise<void> {
 
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/kurocat/releases/latest';
+    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/davehe123/kurocat/releases/latest';
     void invoke('open_release_page', { url });
   });
 
@@ -586,6 +574,10 @@ async function bootstrap(): Promise<void> {
     }
 
     switch (target.dataset.action) {
+      case 'open-controls':
+        void invoke('open_controls');
+        closeContextMenu();
+        break;
       case 'toggle-privacy':
         void applySettingsPatch({ privacyPasswordGuard: !(settings.privacyPasswordGuard !== false) });
         break;

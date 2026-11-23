@@ -2,6 +2,7 @@
 
 mod cats;
 mod config;
+mod control;
 mod input_hook;
 mod mcp;
 mod privacy;
@@ -11,7 +12,7 @@ mod updater;
 use cats::{all_cats, cat_exists, cats_path, sanitize_cat_id, CatSkinConfig};
 use config::{
     config_path, load_settings, normalize_keyboard_layout, normalize_keyboard_orientation,
-    save_settings, set_windows_autostart, AppSettings,
+    save_settings, set_windows_autostart, AppSettings, SettingsPatch,
 };
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -120,52 +121,43 @@ fn get_mcp_config(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-fn update_settings(app: AppHandle, state: State<'_, AppState>, mut patch: AppSettings) -> AppSettings {
-    patch.scale = patch.scale.clamp(0.20, 1.50);
-    let clean_breed = sanitize_cat_id(&patch.cat_breed);
-    patch.cat_breed = if cat_exists(&clean_breed) {
-        clean_breed
-    } else {
-        "black".to_string()
-    };
-    if patch.mcp_port == 0 {
-        patch.mcp_port = 27420;
-    }
-    patch.keyboard_layout = normalize_keyboard_layout(&patch.keyboard_layout);
-    patch.keyboard_orientation = normalize_keyboard_orientation(&patch.keyboard_orientation);
-
-    let (prev_autostart, prev_scale, prev_layout) = {
-        let s = state.settings.lock().unwrap();
-        (s.autostart, s.scale, s.keyboard_layout.clone())
-    };
-    if patch.autostart != prev_autostart {
-        let _ = set_windows_autostart(patch.autostart);
-    }
-
-    state.mcp_enabled.store(patch.mcp_enabled, Ordering::Relaxed);
-
-    let size_changed = (patch.scale - prev_scale).abs() > 0.005 || patch.keyboard_layout != prev_layout;
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_always_on_top(patch.always_on_top);
-        #[cfg(target_os = "macos")]
-        configure_macos_fullscreen_overlay(&win, patch.always_on_top);
-        if size_changed {
-            if let Some((nx, ny)) =
-                resize_window_anchored_bottom_right(&win, &patch.keyboard_layout, patch.scale)
-            {
-                patch.x = Some(nx);
-                patch.y = Some(ny);
+fn update_settings(app: AppHandle, state: State<'_, AppState>, patch: SettingsPatch) -> AppSettings {
+    let updated = {
+        let mut current = state.settings.lock().unwrap();
+        let mut next = current.clone();
+        patch.apply(&mut next);
+        next.scale = next.scale.clamp(0.20, 1.50);
+        let clean_breed = sanitize_cat_id(&next.cat_breed);
+        next.cat_breed = if cat_exists(&clean_breed) { clean_breed } else { current.cat_breed.clone() };
+        if next.mcp_port == 0 {
+            next.mcp_port = 27421;
+        }
+        next.keyboard_layout = normalize_keyboard_layout(&next.keyboard_layout);
+        next.keyboard_orientation = normalize_keyboard_orientation(&next.keyboard_orientation);
+        if next.autostart != current.autostart && set_windows_autostart(next.autostart).is_err() {
+            next.autostart = current.autostart;
+        }
+        state.mcp_enabled.store(next.mcp_enabled, Ordering::Relaxed);
+        if let Some(window) = app.get_webview_window("main") {
+            if next.always_on_top != current.always_on_top {
+                let _ = window.set_always_on_top(next.always_on_top);
+                #[cfg(target_os = "macos")]
+                configure_macos_fullscreen_overlay(&window, next.always_on_top);
+            }
+            let size_changed = next.scale != current.scale || next.keyboard_layout != current.keyboard_layout;
+            if size_changed {
+                if let Some((x, y)) = resize_window_anchored_bottom_right(&window, &next.keyboard_layout, next.scale) {
+                    next.x = Some(x);
+                    next.y = Some(y);
+                }
             }
         }
-    }
-
-    {
-        let mut s = state.settings.lock().unwrap();
-        *s = patch.clone();
-        save_settings(&s);
-    }
-    let _ = app.emit("kuro-settings", patch.clone());
-    patch
+        save_settings(&next);
+        *current = next.clone();
+        next
+    };
+    let _ = app.emit("kuro-settings", updated.clone());
+    updated
 }
 
 #[tauri::command]
@@ -252,17 +244,17 @@ pub fn apply_breed_and_save(app: &AppHandle, breed: &str) {
 }
 
 pub fn reload_and_emit_all(app: &AppHandle) {
-    let disk_settings = load_settings();
     let cats = all_cats();
     let state = app.state::<AppState>();
 
-    let (size_changed, top_changed) = {
+    let (disk_settings, size_changed, top_changed) = {
         let mut s = state.settings.lock().unwrap();
-        let sc = (s.scale - disk_settings.scale).abs() > 0.01
+        let disk_settings = load_settings();
+        let size_changed = (s.scale - disk_settings.scale).abs() > 0.01
             || s.keyboard_layout != disk_settings.keyboard_layout;
-        let tc = s.always_on_top != disk_settings.always_on_top;
+        let top_changed = s.always_on_top != disk_settings.always_on_top;
         *s = disk_settings.clone();
-        (sc, tc)
+        (disk_settings, size_changed, top_changed)
     };
     state
         .mcp_enabled
@@ -1091,10 +1083,12 @@ pub fn run() {
                 paused_for_setup,
             );
             start_storage_watcher(handle.clone());
-            updater::start_background_update_checker(handle.clone());
+            if !std::env::args().any(|arg| arg == "--background") {
+                control::show_control(&handle)?;
+            }
 
             let http_handle = handle.clone();
-            let mcp_port = if s.mcp_port == 0 { 27420 } else { s.mcp_port };
+            let mcp_port = if s.mcp_port == 0 { 27421 } else { s.mcp_port };
             mcp::start_http_mcp_server(mcp_port, mcp_for_setup, move || {
                 reload_and_emit_all(&http_handle);
             });
@@ -1132,7 +1126,18 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == "control" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            control::open_controls,
+            control::show_desktop_pet,
+            control::save_custom_skin,
             get_settings,
             get_cats,
             get_mcp_config,
