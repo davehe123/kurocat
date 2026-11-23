@@ -1,0 +1,35 @@
+name: Tuanzi Windows portable
+
+on:
+  push:
+    branches:
+      - refactor/tuanzi-desktop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+      - run: npm ci
+      - run: npm run build:windows:portable
+      - name: Verify partial settings
+        run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --lib settings_patch_tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TuanziCat-Windows-x64-Portable
+          path: |
+            src-tauri/target/release/TuanziCat.exe
+            LICENSE
+          if-no-files-found: error
