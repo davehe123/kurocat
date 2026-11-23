@@ -6,6 +6,7 @@ mod control;
 mod input_hook;
 mod mcp;
 mod privacy;
+mod startup;
 mod tray;
 mod updater;
 
@@ -1007,6 +1008,7 @@ fn start_hit_test_loop(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    startup::initialize();
     #[cfg(windows)]
     win_wait_for_previous_pid_if_requested();
 
@@ -1030,7 +1032,7 @@ pub fn run() {
     let banner_for_setup = update_banner_open.clone();
     let paused_for_setup = paused_guard.clone();
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .manage(AppState {
             settings: settings_arc,
             menu_open,
@@ -1040,6 +1042,7 @@ pub fn run() {
             paused_guard,
         })
         .setup(move |app| {
+            startup::log("native setup started");
             let handle = app.handle().clone();
             let s = settings_for_setup.lock().unwrap().clone();
 
@@ -1068,6 +1071,12 @@ pub fn run() {
             }
 
             tray::setup_tray(&handle, &s)?;
+            startup::log("desktop window and tray initialized");
+            if !std::env::args().any(|arg| arg == "--background") {
+                control::schedule_control(handle.clone());
+            }
+            startup::wait_for_smoke_check(handle.clone());
+
             input_hook::start_global_hooks(handle.clone());
             privacy::start_password_privacy_watcher(
                 handle.clone(),
@@ -1083,10 +1092,6 @@ pub fn run() {
                 paused_for_setup,
             );
             start_storage_watcher(handle.clone());
-            if !std::env::args().any(|arg| arg == "--background") {
-                control::show_control(&handle)?;
-            }
-
             let http_handle = handle.clone();
             let mcp_port = if s.mcp_port == 0 { 27421 } else { s.mcp_port };
             mcp::start_http_mcp_server(mcp_port, mcp_for_setup, move || {
@@ -1136,6 +1141,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             control::open_controls,
+            control::control_ready,
             control::show_desktop_pet,
             control::save_custom_skin,
             get_settings,
@@ -1154,8 +1160,11 @@ pub fn run() {
             open_release_page,
             quit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running KuroCat");
+        .run(tauri::generate_context!());
+    if let Err(error) = result {
+        startup::report_failure(&error.to_string());
+        std::process::exit(1);
+    }
 }
 
 #[cfg(all(test, windows))]

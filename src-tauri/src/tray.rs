@@ -330,7 +330,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
             let state = app.state::<AppState>();
             match event.id().as_ref() {
                 "open_controls" => {
-                    let _ = crate::control::show_control(app);
+                    crate::control::schedule_control(app.clone());
                 }
                 "toggle_show" => {
                     let on_top = state.settings.lock().unwrap().always_on_top;

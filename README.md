@@ -22,4 +22,6 @@ npm run build:windows:portable
 
 配置目录为 `%APPDATA%\tuanzi-cat`，本地 MCP 默认端口为 `27421`。保留原有 MCP 协议和键鼠动画引擎。内置版本检查指向这个 Fork 的 Releases。
 
+启动日志位于 `%APPDATA%\tuanzi-cat\startup.log`。如果这里无法写入，程序会尝试写到 `%TEMP%\tuanzi-cat-startup.log`。
+
 上游来源 [qianyiai/kurocat](https://github.com/qianyiai/kurocat)。许可证见 [LICENSE](LICENSE)。

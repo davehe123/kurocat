@@ -1,24 +1,57 @@
 use crate::cats::{all_cats, smoky_gray_tabby, upsert_custom_cat, CatSkinConfig};
 use crate::{apply_breed_and_save, AppState};
 use serde::Deserialize;
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::Ordering, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-pub fn show_control(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("control") {
-        window.show()?;
-        if window.is_minimized().unwrap_or(false) {
-            let _ = window.unminimize();
+static CONTROL_WINDOW: Mutex<()> = Mutex::new(());
+
+fn show_control(app: &AppHandle) -> Result<(), String> {
+    let _guard = CONTROL_WINDOW.lock().map_err(|error| error.to_string())?;
+    let window = match app.get_webview_window("control") {
+        Some(window) => window,
+        None => {
+            let config = app.config().app.windows.iter()
+                .find(|window| window.label == "control")
+                .ok_or("缺少控制面板配置。")?;
+            tauri::WebviewWindowBuilder::from_config(app, config)
+                .and_then(|builder| builder.build())
+                .map_err(|error| error.to_string())?
         }
-        let _ = window.set_focus();
+    };
+    window.show().map_err(|error| error.to_string())?;
+    if window.is_minimized().unwrap_or(false) {
+        let _ = window.unminimize();
     }
+    let _ = window.set_focus();
+    if !window.is_visible().unwrap_or(false) {
+        return Err("控制面板窗口没有显示。".into());
+    }
+    crate::startup::control_shown();
     Ok(())
 }
 
+pub fn schedule_control(app: AppHandle) {
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = show_control(&app) {
+            crate::startup::report_failure(&error);
+        }
+    });
+}
+
 #[tauri::command]
-pub fn open_controls(app: AppHandle) -> Result<(), String> {
-    show_control(&app).map_err(|error| error.to_string())
+pub async fn open_controls(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || show_control(&app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn control_ready(window: tauri::WebviewWindow) {
+    if window.label() == "control" {
+        crate::startup::frontend_ready();
+    }
 }
 
 #[tauri::command]

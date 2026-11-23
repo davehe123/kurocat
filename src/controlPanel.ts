@@ -184,6 +184,7 @@ async function start(): Promise<void> {
   };
   document.addEventListener('visibilitychange', updatePreview);
   updatePreview();
+  await invoke('control_ready');
 }
 
 void start().catch(displayError);

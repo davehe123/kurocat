@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   windows-portable:
@@ -22,10 +23,61 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+      - name: Fetch previous portable build
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: TuanziCat-Windows-x64-Portable
+          run-id: 45093624531
+          github-token: ${{ github.token }}
+          path: previous-portable
+      - name: Observe the previous executable
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $source = Get-Item 'previous-portable/TuanziCat.exe' -ErrorAction SilentlyContinue
+          if (-not $source) { Write-Output 'Previous executable could not be fetched.'; return }
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'tuanzi-previous-probe'
+          $pet = Start-Process -FilePath $source.FullName -PassThru
+          try {
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            do {
+              $pet.Refresh()
+              if ($pet.HasExited -or $pet.MainWindowTitle) { break }
+              Start-Sleep -Milliseconds 200
+            } while ($watch.Elapsed.TotalSeconds -lt 12)
+            if ($pet.HasExited) {
+              Write-Output "Previous executable exited with $($pet.ExitCode)."
+            } elseif ($pet.MainWindowTitle) {
+              Write-Output "Previous executable window: $($pet.MainWindowTitle)"
+            } else {
+              Write-Output 'Previous executable was still running without a taskbar window.'
+            }
+          } finally {
+            if (-not $pet.HasExited) { Stop-Process -Id $pet.Id -ErrorAction SilentlyContinue }
+          }
       - run: npm ci
       - run: npm run build:windows:portable
       - name: Verify partial settings
         run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --lib settings_patch_tests
+      - name: Launch the actual Windows executable
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'src-tauri/target/release/TuanziCat.exe').Path
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'tuanzi-startup-probe'
+          $log = Join-Path $env:APPDATA 'tuanzi-cat/startup.log'
+          $pet = Start-Process -FilePath $exe -ArgumentList '--startup-check' -PassThru
+          if (-not $pet.WaitForExit(45000)) {
+            Stop-Process -Id $pet.Id -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+            throw 'The Windows executable did not finish its startup check.'
+          }
+          if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+          if ($pet.ExitCode -ne 0) { throw "The Windows executable returned $($pet.ExitCode)." }
+          $entries = Get-Content -LiteralPath $log -Raw
+          foreach ($required in @('desktop window and tray initialized', 'control window shown', 'control frontend ready', 'startup check passed')) {
+            if (-not $entries.Contains($required)) { throw "Missing startup stage: $required" }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: TuanziCat-Windows-x64-Portable
